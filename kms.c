@@ -20,6 +20,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
@@ -72,6 +73,7 @@ struct PropertyIDAddresses {
     uint32_t *ptr;
 };
 
+static int is_nvdc;
 
 /*
  * Pick the first connected connector we find with usable modes and
@@ -83,15 +85,25 @@ static void PickConnector(int drmFd,
 {
     int i, j;
 
+    Log("%s: mode has %u connectors, %u crtcs\n",
+        __func__,
+        pModeRes->count_connectors,
+        pModeRes->count_crtcs);
+
     for (i = 0; i < pModeRes->count_connectors; i++) {
 
         drmModeConnectorPtr pConnector =
             drmModeGetConnector(drmFd, pModeRes->connectors[i]);
 
+        Log("%s: connector %d of %d\n", __func__, i, pModeRes->count_connectors);
+
         if (pConnector == NULL) {
             Fatal("Unable to query DRM-KMS information for "
                   "connector index %d\n", i);
         }
+
+        Log("   -- %d connection=%u, modes=%d, encoders=%d\n",
+               i, pConnector->connection, pConnector->count_modes, pConnector->count_encoders);
 
         if ((pConnector->connection == DRM_MODE_CONNECTED) &&
             (pConnector->count_modes > 0) &&
@@ -107,6 +119,8 @@ static void PickConnector(int drmFd,
 
             pConfig->connectorID = pModeRes->connectors[i];
             pConfig->mode = pConnector->modes[0];
+
+            Log("    - encoder[0] possible_crtcs=0x%x\n", pEncoder->possible_crtcs);
 
             for (j = 0; j < pModeRes->count_crtcs; j++) {
 
@@ -155,8 +169,12 @@ static uint64_t GetPropertyValue(
     drmModeObjectPropertiesPtr pModeObjectProperties =
         drmModeObjectGetProperties(drmFd, objectID, objectType);
 
+    Log("%s: objectID=%u, objectType=0x%x has %d properties\n",
+        __func__, objectID, objectType, pModeObjectProperties->count_props);
+
     for (i = 0; i < pModeObjectProperties->count_props; i++) {
 
+        int j;
         drmModePropertyPtr pProperty =
             drmModeGetProperty(drmFd, pModeObjectProperties->props[i]);
 
@@ -164,16 +182,23 @@ static uint64_t GetPropertyValue(
             Fatal("Unable to query property.\n");
         }
 
+        Log("      property %d: id=%u, flags=0x%x, name=%s, value count: %d enum count: %d blob count: %d\n",
+            i, pProperty->prop_id, pProperty->flags, pProperty->name, pProperty->count_values,
+               pProperty->count_enums, pProperty->count_blobs);
+        for (j = 0; j < pProperty->count_values; j++)
+            Log("        value[%d]=0x%lx\n", j, pProperty->values[j]);
+        for (j = 0; j < pProperty->count_enums; j++)
+            Log("        enum[%d]=(value: 0x%llx, name:%s)\n", j,
+                pProperty->enums[j].value, pProperty->enums[j].name);
+
         if (strcmp(propName, pProperty->name) == 0) {
             value = pModeObjectProperties->prop_values[i];
             found = 1;
+            Log("        -- found %s, value=0x%lx\n", propName, value);
         }
 
         drmModeFreeProperty(pProperty);
 
-        if (found) {
-            break;
-        }
     }
 
     drmModeFreeObjectProperties(pModeObjectProperties);
@@ -198,6 +223,8 @@ static void PickPlane(int drmFd, struct Config *pConfig)
         Fatal("Unable to query DRM-KMS plane resources\n");
     }
 
+    Log("%s: found %d planes\n", __func__, pPlaneRes->count_planes);
+
     for (i = 0; i < pPlaneRes->count_planes; i++) {
         drmModePlanePtr pPlane = drmModeGetPlane(drmFd, pPlaneRes->planes[i]);
         uint32_t crtcs;
@@ -206,6 +233,12 @@ static void PickPlane(int drmFd, struct Config *pConfig)
         if (pPlane == NULL) {
             Fatal("Unable to query DRM-KMS plane %d\n", i);
         }
+
+        Log("    -- plane %d: crtcs=0x%x\n", i, pPlane->possible_crtcs);
+        Log("                 format count: %d\n", pPlane->count_formats);
+        Log("                 crtc_id: %u\n", pPlane->crtc_id);
+        Log("                 fb_id: %u\n", pPlane->fb_id);
+        Log("                 plane_id: %u (%u)\n", pPlane->plane_id, pPlaneRes->planes[i]);
 
         crtcs = pPlane->possible_crtcs;
 
@@ -217,10 +250,11 @@ static void PickPlane(int drmFd, struct Config *pConfig)
 
         type = GetPropertyValue(drmFd, pPlaneRes->planes[i],
                                 DRM_MODE_OBJECT_PLANE, "type");
+        Log("                 type: %lu\n", type);
 
         if (type == DRM_PLANE_TYPE_PRIMARY) {
             pConfig->planeID = pPlaneRes->planes[i];
-            break;
+            Log("%s: choosing plane ID %u\n", __func__, pConfig->planeID);
         }
     }
 
@@ -238,7 +272,7 @@ static void PickPlane(int drmFd, struct Config *pConfig)
 static void PickConfig(int drmFd, struct Config *pConfig)
 {
     drmModeResPtr pModeRes;
-    int ret;
+    int ret, i;
 
     ret = drmSetClientCap(drmFd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
 
@@ -258,6 +292,17 @@ static void PickConfig(int drmFd, struct Config *pConfig)
         Fatal("Unable to query DRM-KMS resources.\n");
     }
 
+    Log("%s: FB count: %d, CRTC count: %d, Connector count: %d, Encoder count: %d\n", __func__,
+           pModeRes->count_fbs, pModeRes->count_crtcs, pModeRes->count_connectors,
+           pModeRes->count_encoders);
+    for (i = 0; i < pModeRes->count_fbs; i++)
+        Log("    fb[%d]: %u\n", i, pModeRes->fbs[i]);
+    for (i = 0; i < pModeRes->count_crtcs; i++)
+        Log("    crtc[%d]: %u\n", i, pModeRes->crtcs[i]);
+    for (i = 0; i < pModeRes->count_connectors; i++)
+        Log("    connector[%d]: %u\n", i, pModeRes->connectors[i]);
+    for (i = 0; i < pModeRes->count_encoders; i++)
+        Log("    encoder[%d]: %u\n", i, pModeRes->encoders[i]);
     PickConnector(drmFd, pModeRes, pConfig);
 
     PickPlane(drmFd, pConfig);
@@ -319,10 +364,14 @@ static uint32_t CreateFb(int drmFd, const struct Config *pConfig)
         Fatal("Unable to map dumb buffer.\n");
     }
 
-    map = mmap(0, createRequest.size, PROT_READ | PROT_WRITE, MAP_SHARED,
-               drmFd, mapRequest.offset);
-    if (map == MAP_FAILED) {
-        Fatal("Failed to mmap(2) fb.\n");
+    if (is_nvdc)
+        map = (uint8_t *) mapRequest.offset;
+    else {
+        map = mmap(0, createRequest.size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                   drmFd, mapRequest.offset);
+        if (map == MAP_FAILED) {
+            Fatal("Failed to mmap(2) fb.\n");
+        }
     }
 
     memset(map, 0, createRequest.size);
@@ -349,6 +398,9 @@ static void AssignPropertyIDsOneType(int drmFd,
         Fatal("Unable to query mode object properties.\n");
     }
 
+    Log("%s: got %d properties for ID %d, type=0x%x\n",
+        __func__, pModeObjectProperties->count_props, objectID, objectType);
+
     for (i = 0; i < pModeObjectProperties->count_props; i++) {
 
         uint32_t j;
@@ -362,6 +414,8 @@ static void AssignPropertyIDsOneType(int drmFd,
         for (j = 0; j < tableLen; j++) {
             if (strcmp(table[j].name, pProperty->name) == 0) {
                 *(table[j].ptr) = pProperty->prop_id;
+                Log("    - stored prop_id %d at %d for %s\n",
+                    pProperty->prop_id, j, pProperty->name);
                 break;
             }
         }
@@ -503,7 +557,7 @@ static void AssignAtomicRequest(int drmFd,
  * present, and its dimensions.  On failure, exit with a fatal error
  * message.
  */
-void SetMode(int drmFd, uint32_t *pPlaneID, int *pWidth, int *pHeight)
+void SetMode(int drmFd, uint32_t *pCrtcID, uint32_t *pPlaneID, int *pWidth, int *pHeight)
 {
     struct Config config = { 0 };
     drmModeAtomicReqPtr pAtomic;
@@ -513,22 +567,37 @@ void SetMode(int drmFd, uint32_t *pPlaneID, int *pWidth, int *pHeight)
 
     PickConfig(drmFd, &config);
 
-    modeID = CreateModeID(drmFd, &config);
     fb = CreateFb(drmFd, &config);
+    if (is_nvdc) {
+        ret = drmModeSetCrtc(drmFd, config.crtcID, fb, 0, 0,
+                             &config.connectorID, 1, &config.mode);
+        *pCrtcID = config.crtcID;
+        *pPlaneID = 0;
+    } else {
+        modeID = CreateModeID(drmFd, &config);
+        pAtomic = drmModeAtomicAlloc();
 
-    pAtomic = drmModeAtomicAlloc();
+        AssignAtomicRequest(drmFd, pAtomic, &config, modeID, fb);
 
-    AssignAtomicRequest(drmFd, pAtomic, &config, modeID, fb);
+        ret = drmModeAtomicCommit(drmFd, pAtomic, flags, NULL /* user_data */);
 
-    ret = drmModeAtomicCommit(drmFd, pAtomic, flags, NULL /* user_data */);
-
-    drmModeAtomicFree(pAtomic);
+        drmModeAtomicFree(pAtomic);
+        *pCrtcID = 0;
+        *pPlaneID = config.planeID;
+    }
 
     if (ret != 0) {
         Fatal("Failed to set mode.\n");
     }
 
-    *pPlaneID = config.planeID;
     *pWidth = config.width;
     *pHeight = config.height;
+}
+
+int DrmOpen(void)
+{
+    int fd = drmOpen("", "");
+    if (fd >= 0)
+        is_nvdc = 1;
+    return fd;
 }

@@ -20,6 +20,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -32,11 +33,7 @@
 
 #include "utils.h"
 #include "egl.h"
-
-/* XXX khronos eglext.h does not yet have EGL_DRM_MASTER_FD_EXT */
-#if !defined(EGL_DRM_MASTER_FD_EXT)
-#define EGL_DRM_MASTER_FD_EXT                   0x333C
-#endif
+#include "kms.h"
 
 
 /*
@@ -153,8 +150,11 @@ int GetDrmFd(EGLDeviceEXT device)
     if (drmDeviceFile == NULL) {
         Fatal("No DRM device file found for EGL device.\n");
     }
-
-    fd = open(drmDeviceFile, O_RDWR, 0);
+    Log("%s: drmDeviceFile is %s\n", __func__, drmDeviceFile);
+    if (strcmp(drmDeviceFile, "drm-nvdc") == 0)
+        fd = DrmOpen();
+    else
+        fd = open(drmDeviceFile, O_RDWR, 0);
 
     if (fd < 0) {
         Fatal("Unable to open DRM device file.\n");
@@ -167,7 +167,7 @@ int GetDrmFd(EGLDeviceEXT device)
 /*
  * Create an EGLDisplay from the given EGL device.
  */
-EGLDisplay GetEglDisplay(EGLDeviceEXT device, int drmFd)
+EGLDisplay GetEglDisplay(EGLDeviceEXT device, int __attribute__((unused)) drmFd)
 {
     EGLDisplay eglDpy;
 
@@ -183,8 +183,10 @@ EGLDisplay GetEglDisplay(EGLDeviceEXT device, int drmFd)
      * same fd as the application.
      */
     EGLint attribs[] = {
+#ifdef EGL_DRM_MASTER_FD_EXT
         EGL_DRM_MASTER_FD_EXT,
         drmFd,
+#endif
         EGL_NONE
     };
 
@@ -233,7 +235,7 @@ EGLDisplay GetEglDisplay(EGLDeviceEXT device, int drmFd)
 /*
  * Set up EGL to present to a DRM KMS plane through an EGLStream.
  */
-EGLSurface SetUpEgl(EGLDisplay eglDpy, uint32_t planeID, int width, int height)
+EGLSurface SetUpEgl(EGLDisplay eglDpy, uint32_t crtcID, uint32_t planeID, int width, int height)
 {
     EGLint configAttribs[] = {
         EGL_SURFACE_TYPE, EGL_STREAM_BIT_KHR,
@@ -248,12 +250,6 @@ EGLSurface SetUpEgl(EGLDisplay eglDpy, uint32_t planeID, int width, int height)
 
     EGLint contextAttribs[] = { EGL_NONE };
 
-    EGLAttrib layerAttribs[] = {
-        EGL_DRM_PLANE_EXT,
-        planeID,
-        EGL_NONE,
-    };
-
     EGLint streamAttribs[] = { EGL_NONE };
 
     EGLint surfaceAttribs[] = {
@@ -266,7 +262,7 @@ EGLSurface SetUpEgl(EGLDisplay eglDpy, uint32_t planeID, int width, int height)
     EGLContext eglContext;
     EGLint n = 0;
     EGLBoolean ret;
-    EGLOutputLayerEXT eglLayer;
+    EGLOutputLayerEXT eglLayer, *eglLayers;
     EGLStreamKHR eglStream;
     EGLSurface eglSurface;
 
@@ -326,13 +322,49 @@ EGLSurface SetUpEgl(EGLDisplay eglDpy, uint32_t planeID, int width, int height)
         Fatal("eglCreateContext() failed.\n");
     }
 
-    /* Find the EGLOutputLayer that corresponds to the DRM KMS plane. */
+    ret = pEglGetOutputLayersEXT(eglDpy, NULL, NULL, 0, &n);
+    if (ret)
+        Log("%s: There are %d EGLOutputLayers\n", __func__, n);
 
-    ret = pEglGetOutputLayersEXT(eglDpy, layerAttribs, &eglLayer, 1, &n);
+    if (!ret || n == 0)
+        Fatal("Unable to enumerate EGLOutputLayers\n");
 
-    if (!ret || !n) {
-        Fatal("Unable to get EGLOutputLayer for plane 0x%08x\n", planeID);
+    eglLayer = NULL;
+    eglLayers = malloc(n * sizeof(*eglLayers));
+    ret = pEglGetOutputLayersEXT(eglDpy, NULL, eglLayers, n, &n);
+    if (ret) {
+        int i;
+        for (i = 0; i < n; i++) {
+            EGLAttrib plane_id, crtc_id, connector_id;
+            if (pEglQueryOutputLayerAttribEXT(eglDpy, eglLayers[i], EGL_DRM_PLANE_EXT, &plane_id)) {
+                Log("   ---> layer %d (%p): plane: %ld\n", i, eglLayers[i], plane_id);
+                if (planeID != 0 && plane_id == planeID) {
+                    Log("         Plane ID matched\n");
+                    eglLayer = eglLayers[i];
+                }
+            } else
+                Log("   ---> layer %d (%p): no EGL_DRM_PLANE_EXT attribute\n", i, eglLayers[i]);
+            if (pEglQueryOutputLayerAttribEXT(eglDpy, eglLayers[i], EGL_DRM_CRTC_EXT, &crtc_id)) {
+                Log("   ---> layer %d (%p): crtc: %ld\n", i, eglLayers[i], crtc_id);
+                if (crtcID != 0 && crtc_id == crtcID) {
+                    Log("         CRTC ID matched\n");
+                    eglLayer = eglLayers[i];
+                }
+            } else
+                Log("   ---> layer %d (%p): no EGL_DRM_CRTC_EXT attribute\n", i, eglLayers[i]);
+            if (pEglQueryOutputLayerAttribEXT(eglDpy, eglLayers[i], EGL_DRM_CONNECTOR_EXT, &connector_id))
+                Log("   ---> layer %d (%p): connector: %ld\n", i, eglLayers[i], connector_id);
+            else
+                Log("   ---> layer %d (%p): no EGL_DRM_CONNECTOR_EXT attribute\n", i, eglLayers[i]);
+        }
     }
+
+    free(eglLayers);
+
+    if (eglLayer == NULL)
+        Fatal("Unable to get EGLOutputLayer for CRTC %u, plane %u\n", crtcID, planeID);
+
+    Log("%s: using eglLayer %p\n", __func__, eglLayer);
 
     /* Create an EGLStream. */
 

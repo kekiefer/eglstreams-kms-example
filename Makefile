@@ -33,17 +33,31 @@ OBJECTS = $(SOURCES:.c=.o)
 
 EGLSTREAMS_KMS_EXAMPLE = eglstreams-kms-example
 
-CFLAGS += -Wall -Wextra -g
-CFLAGS += -I /usr/include/libdrm
+CFLAGS += -Wall -Wextra
+CFLAGS += $(shell pkg-config --cflags egl)
+CFLAGS += $(shell pkg-config --cflags gl)
+CFLAGS += $(shell pkg-config --cflags libdrm)
 
-# Use a current snapshot of EGL header files from Khronos
-CFLAGS += -I khronos
+LDFLAGS += $(shell pkg-config --libs egl)
+LDFLAGS += $(shell pkg-config --libs gl)
+LDFLAGS += $(shell pkg-config --libs libdrm)
+
+prefix = /usr
+exec_prefix = /usr
+bindir = $(exec_prefix)/bin
+
+.PHONY: install clean all
+all: $(EGLSTREAMS_KMS_EXAMPLE)
 
 %.o: %.c $(HEADERS)
-	gcc -c $< -o $@ $(CFLAGS)
+	$(CC) -c $< -o $@ $(CFLAGS)
 
 $(EGLSTREAMS_KMS_EXAMPLE): $(OBJECTS)
-	gcc -o $@ $(OBJECTS) -lEGL -lOpenGL -ldrm -lm
+	$(CCLD) -o $@ $(OBJECTS) $(LDFLAGS) -lm
+
+install:
+	install -d $(DESTDIR)$(bindir)
+	install -m 0755 $(EGLSTREAMS_KMS_EXAMPLE) $(DESTDIR)$(bindir)/
 
 clean:
 	rm -f *.o $(EGLSTREAMS_KMS_EXAMPLE) *~

@@ -20,6 +20,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include <stdio.h>
 #include "utils.h"
 #include "egl.h"
 #include "kms.h"
@@ -35,7 +36,7 @@ int main(void)
     EGLDisplay eglDpy;
     EGLDeviceEXT eglDevice;
     int drmFd, width, height;
-    uint32_t planeID = 0;
+    uint32_t crtcID, planeID;
     EGLSurface eglSurface;
 
     GetEglExtensionFunctionPointers();
@@ -44,13 +45,14 @@ int main(void)
 
     drmFd = GetDrmFd(eglDevice);
 
-    SetMode(drmFd, &planeID, &width, &height);
+    SetMode(drmFd, &crtcID, &planeID, &width, &height);
 
     eglDpy = GetEglDisplay(eglDevice, drmFd);
 
-    eglSurface = SetUpEgl(eglDpy, planeID, width, height);
+    eglSurface = SetUpEgl(eglDpy, crtcID, planeID, width, height);
 
     InitGears(width, height);
+    fflush(stdout);
 
     while(1) {
         DrawGears();

@@ -45,6 +45,17 @@ void Fatal(const char *format, ...)
 }
 
 
+void Log(const char *format, ...)
+{
+    va_list ap;
+
+    va_start(ap, format);
+    vfprintf(stderr, format, ap);
+    va_end(ap);
+
+}
+
+
 double GetTime(void)
 {
     struct timeval tv;
@@ -130,6 +141,8 @@ PFNEGLQUERYDEVICESEXTPROC pEglQueryDevicesEXT = NULL;
 PFNEGLQUERYDEVICESTRINGEXTPROC pEglQueryDeviceStringEXT = NULL;
 PFNEGLGETPLATFORMDISPLAYEXTPROC pEglGetPlatformDisplayEXT = NULL;
 PFNEGLGETOUTPUTLAYERSEXTPROC pEglGetOutputLayersEXT = NULL;
+PFNEGLQUERYOUTPUTLAYERATTRIBEXTPROC pEglQueryOutputLayerAttribEXT = NULL;
+PFNEGLQUERYOUTPUTLAYERSTRINGEXTPROC pEglQueryOutputLayerStringEXT = NULL;
 PFNEGLCREATESTREAMKHRPROC pEglCreateStreamKHR = NULL;
 PFNEGLSTREAMCONSUMEROUTPUTEXTPROC pEglStreamConsumerOutputEXT = NULL;
 PFNEGLCREATESTREAMPRODUCERSURFACEKHRPROC pEglCreateStreamProducerSurfaceKHR = NULL;
@@ -147,6 +160,12 @@ void GetEglExtensionFunctionPointers(void)
 
     pEglGetOutputLayersEXT = (PFNEGLGETOUTPUTLAYERSEXTPROC)
         GetProcAddress("eglGetOutputLayersEXT");
+
+    pEglQueryOutputLayerAttribEXT = (PFNEGLQUERYOUTPUTLAYERATTRIBEXTPROC)
+        GetProcAddress("eglQueryOutputLayerAttribEXT");
+
+    pEglQueryOutputLayerStringEXT = (PFNEGLQUERYOUTPUTLAYERSTRINGEXTPROC)
+        GetProcAddress("eglQueryOutputLayerStringEXT");
 
     pEglCreateStreamKHR = (PFNEGLCREATESTREAMKHRPROC)
         GetProcAddress("eglCreateStreamKHR");

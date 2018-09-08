@@ -29,6 +29,7 @@
 #define ARRAY_LEN(_arr) (sizeof(_arr) / sizeof(_arr[0]))
 
 void Fatal(const char *format, ...);
+void Log(const char *format, ...);
 
 double GetTime(void);
 void PrintFps(void);
@@ -43,6 +44,8 @@ extern PFNEGLQUERYDEVICESEXTPROC pEglQueryDevicesEXT;
 extern PFNEGLQUERYDEVICESTRINGEXTPROC pEglQueryDeviceStringEXT;
 extern PFNEGLGETPLATFORMDISPLAYEXTPROC pEglGetPlatformDisplayEXT;
 extern PFNEGLGETOUTPUTLAYERSEXTPROC pEglGetOutputLayersEXT;
+PFNEGLQUERYOUTPUTLAYERATTRIBEXTPROC pEglQueryOutputLayerAttribEXT;
+PFNEGLQUERYOUTPUTLAYERSTRINGEXTPROC pEglQueryOutputLayerStringEXT;
 extern PFNEGLCREATESTREAMKHRPROC pEglCreateStreamKHR;
 extern PFNEGLSTREAMCONSUMEROUTPUTEXTPROC pEglStreamConsumerOutputEXT;
 extern PFNEGLCREATESTREAMPRODUCERSURFACEKHRPROC pEglCreateStreamProducerSurfaceKHR;

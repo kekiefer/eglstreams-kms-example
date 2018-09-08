@@ -32,6 +32,6 @@ int GetDrmFd(EGLDeviceEXT device);
 
 EGLDisplay GetEglDisplay(EGLDeviceEXT device, int drmFd);
 
-EGLSurface SetUpEgl(EGLDisplay eglDpy, uint32_t planeID, int width, int height);
+EGLSurface SetUpEgl(EGLDisplay eglDpy, uint32_t crtcID, uint32_t planeID, int width, int height);
 
 #endif /* EGL_H */
