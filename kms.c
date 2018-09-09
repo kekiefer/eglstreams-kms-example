@@ -305,7 +305,8 @@ static void PickConfig(int drmFd, struct Config *pConfig)
         Log("    encoder[%d]: %u\n", i, pModeRes->encoders[i]);
     PickConnector(drmFd, pModeRes, pConfig);
 
-    PickPlane(drmFd, pConfig);
+    if (!is_nvdc)
+        PickPlane(drmFd, pConfig);
 
     drmModeFreeResources(pModeRes);
 
