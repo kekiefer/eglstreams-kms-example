@@ -24,6 +24,6 @@
 #define KMS_H
 
 void SetMode(int drmFd, uint32_t *pCrtcID, uint32_t *pPlaneID, int *pWidth, int *pHeight);
-int DrmOpen(void);
+int DrmOpen(const char *deviceName);
 
 #endif /* KMS_H */

@@ -595,9 +595,9 @@ void SetMode(int drmFd, uint32_t *pCrtcID, uint32_t *pPlaneID, int *pWidth, int 
     *pHeight = config.height;
 }
 
-int DrmOpen(void)
+int DrmOpen(const char *deviceName)
 {
-    int fd = drmOpen("", "");
+    int fd = drmOpen(deviceName, "");
     if (fd >= 0)
         is_nvdc = 1;
     return fd;

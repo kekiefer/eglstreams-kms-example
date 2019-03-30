@@ -152,7 +152,7 @@ int GetDrmFd(EGLDeviceEXT device)
     }
     Log("%s: drmDeviceFile is %s\n", __func__, drmDeviceFile);
     if (strcmp(drmDeviceFile, "drm-nvdc") == 0)
-        fd = DrmOpen();
+        fd = DrmOpen(drmDeviceFile);
     else
         fd = open(drmDeviceFile, O_RDWR, 0);
 
