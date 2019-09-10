@@ -46,6 +46,9 @@ prefix = /usr
 exec_prefix = /usr
 bindir = $(exec_prefix)/bin
 
+CC ?= gcc
+CCLD ?= gcc
+
 .PHONY: install clean all
 all: $(EGLSTREAMS_KMS_EXAMPLE)
 

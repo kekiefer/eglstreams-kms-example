@@ -145,16 +145,7 @@ int GetDrmFd(EGLDeviceEXT device)
         Fatal("EGL_EXT_device_drm extension not found.\n");
     }
 
-    drmDeviceFile = pEglQueryDeviceStringEXT(device, EGL_DRM_DEVICE_FILE_EXT);
-
-    if (drmDeviceFile == NULL) {
-        Fatal("No DRM device file found for EGL device.\n");
-    }
-    Log("%s: drmDeviceFile is %s\n", __func__, drmDeviceFile);
-    if (strcmp(drmDeviceFile, "drm-nvdc") == 0)
-        fd = DrmOpen(drmDeviceFile);
-    else
-        fd = open(drmDeviceFile, O_RDWR, 0);
+    fd = drmOpen("evdi", "");
 
     if (fd < 0) {
         Fatal("Unable to open DRM device file.\n");
