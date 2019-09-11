@@ -35,19 +35,20 @@ EGLSTREAMS_KMS_EXAMPLE = eglstreams-kms-example
 
 CFLAGS += -Wall -Wextra
 CFLAGS += $(shell pkg-config --cflags egl)
-CFLAGS += $(shell pkg-config --cflags gl)
+CFLAGS += $(shell pkg-config --cflags gl||echo "")
 CFLAGS += $(shell pkg-config --cflags libdrm)
 
 LDFLAGS += $(shell pkg-config --libs egl)
-LDFLAGS += $(shell pkg-config --libs gl)
+LDFLAGS += $(shell pkg-config --libs gl||echo -lOpenGL)
 LDFLAGS += $(shell pkg-config --libs libdrm)
+LDFLAGS += -lnvbuf_utils
 
 prefix = /usr
 exec_prefix = /usr
 bindir = $(exec_prefix)/bin
 
 CC ?= gcc
-CCLD ?= gcc
+CCLD ?= $(CC)
 
 .PHONY: install clean all
 all: $(EGLSTREAMS_KMS_EXAMPLE)

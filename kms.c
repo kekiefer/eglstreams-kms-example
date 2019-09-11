@@ -29,6 +29,9 @@
 
 #include <xf86drmMode.h>
 #include <xf86drm.h>
+#include <drm_fourcc.h>
+
+#include "nvbuf_utils.h"
 
 #include "kms.h"
 #include "utils.h"
@@ -337,45 +340,80 @@ static uint32_t CreateModeID(int drmFd, const struct Config *pConfig)
  */
 static uint32_t CreateFb(int drmFd, const struct Config *pConfig)
 {
-    struct drm_mode_create_dumb createRequest = { 0 };
-    struct drm_mode_map_dumb mapRequest = { 0 };
     uint8_t *map;
     uint32_t fb = 0;
     int ret;
+    int nvbuf;
+    uint32_t handle;
+    uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
 
-    createRequest.width = pConfig->width;
-    createRequest.height = pConfig->height;
-    createRequest.bpp = 32;
+    NvBufferCreateParams input_params = {0};
+    input_params.payloadType = NvBufferPayload_SurfArray;
+    input_params.width = pConfig->width;
+    input_params.height = pConfig->height;
+    input_params.layout = NvBufferLayout_Pitch;
+    input_params.colorFormat = NvBufferColorFormat_ARGB32;
+    input_params.nvbuf_tag = NvBufferTag_VIDEO_DEC;
 
-    ret = drmIoctl(drmFd, DRM_IOCTL_MODE_CREATE_DUMB, &createRequest);
-    if (ret < 0) {
-        Fatal("Unable to create dumb buffer.\n");
-    }
-
-    ret = drmModeAddFB(drmFd, pConfig->width, pConfig->height, 24, 32,
-                       createRequest.pitch, createRequest.handle, &fb);
+    ret = NvBufferCreateEx (&nvbuf, &input_params);
     if (ret) {
-        Fatal("Unable to add fb.\n");
+        Fatal("Unable to create buffer.\n");
     }
 
-    mapRequest.handle = createRequest.handle;
+    NvBufferParams params;
 
-    ret = drmIoctl(drmFd, DRM_IOCTL_MODE_MAP_DUMB, &mapRequest);
+    // Create a new FB.
+    ret = NvBufferGetParams(nvbuf, &params);
+    if (ret < 0) {
+        Fatal("Failed to get buffer information ");
+        return ret;
+    }
+    else
+        printf("Got dma buffer %d size %dx%d pitch=%d\n",
+            params.dmabuf_fd, params.width[0], params.height[0], params.pitch[0]);
+
+    uint32_t *pv;
+    if (NvBufferMemMap (nvbuf, 0, NvBufferMem_Read_Write, (void**)&pv) != 0) {
+        Fatal("Failed NvBufferMemMap ");
+        return -1;
+    }
+
+    int dma_fd;
+    ret = ExtractFdFromNvBuffer(params.nv_buffer, &dma_fd);
+    if (ret)
+    {
+        Fatal("ExtractFdFromNvBuffer failed");
+        return ret;
+    }
+
+    printf("NV dma buf fd = %d, params fd = %d\n", nvbuf, dma_fd);
+
+    ret = drmPrimeFDToHandle(drmFd, dma_fd, &handle);
+    if (ret < 0) {
+            Fatal("drmPrimeFDToHandle() failed: %m\n");
+            return -errno;
+    }
+
+    printf("DRM handle: %x\n", handle);
+
+    handles[0] = handle;
+    pitches[0] = params.pitch[0];
+    offsets[0] = params.offset[0];
+
+    ret = drmModeAddFB2(drmFd, pConfig->width, pConfig->height,
+                        DRM_FORMAT_ARGB8888, handles, pitches, offsets,
+                        &fb, 0);
+    if (ret < 0) {
+            Fatal("drmModeAddFB() failed: %m\n");
+            return -errno;
+    }
+
+    ret = NvBufferMemMap (dma_fd, 0, NvBufferMem_Read_Write, &map);
     if (ret) {
         Fatal("Unable to map dumb buffer.\n");
     }
 
-    if (is_nvdc)
-        map = (uint8_t *) mapRequest.offset;
-    else {
-        map = mmap(0, createRequest.size, PROT_READ | PROT_WRITE, MAP_SHARED,
-                   drmFd, mapRequest.offset);
-        if (map == MAP_FAILED) {
-            Fatal("Failed to mmap(2) fb.\n");
-        }
-    }
-
-    memset(map, 0, createRequest.size);
+    memset(map, 0, params.psize[0]);
 
     return fb;
 }
